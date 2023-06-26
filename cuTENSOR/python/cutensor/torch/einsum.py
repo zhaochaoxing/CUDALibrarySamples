@@ -32,7 +32,8 @@
 import torch
 import torch.autograd
 import numpy as np
-from .binding import einsum
+from .binding import einsum, einsumV2, getEinsumOutputShape, TensorMg, \
+                     toTensor, fromTensor, init, getOutputShapeMg, einsumMg
 from ..common import normalize_subscript
 
 class EinsumFunction(torch.autograd.Function):
@@ -76,7 +77,6 @@ class EinsumFunction(torch.autograd.Function):
             dummy = grad_output.new_empty((1,))
             d_input = einsum(modeC + '->' + lhs, grad_output, dummy, False, False)
             return None, d_input
-
 
 class Einsum(torch.nn.Module):
 
@@ -136,3 +136,77 @@ def EinsumGeneral(equation, *tensors, **kwargs):
         result = EinsumFunction.apply(eq, in0, in1)
         tensors.append(result)
     return result
+
+def einsumForwardV2(output, equation, input_0, input_1=None):
+    equation, isBinary = normalize_subscript(equation)
+    if isBinary and input_1 is None:
+        raise RuntimeError('The subscript indicates two inputs, but only one was passed')
+    if not isBinary and input_1 is not None:
+        raise RuntimeError('The subscript indicates one input, but two were passed')
+    if input_1 is None:
+        input_1 = input_0.new_empty((1,))
+
+    einsumV2(equation, input_0, input_1, output, False, False)
+
+def einsumForwardOutputShape(equation, input_0, input_1=None):
+    equation, isBinary = normalize_subscript(equation)
+    if isBinary and input_1 is None:
+        raise RuntimeError('The subscript indicates two inputs, but only one was passed')
+    if not isBinary and input_1 is not None:
+        raise RuntimeError('The subscript indicates one input, but two were passed')
+    if input_1 is None:
+        input_1 = input_0.new_empty((1,))
+    return getEinsumOutputShape(equation, input_0, input_1, False, False)
+
+def getOutputShape(equation, *tensors, **kwargs):
+    tensors = list(tensors)
+    equation, isBinary = normalize_subscript(equation)
+    path = np.einsum_path(equation,
+                          *[np.broadcast_to(np.nan, t.shape) for t in tensors],
+                          **kwargs)
+    path = path[0][1:]
+    equation = equation.split('->')
+    eqs = equation[0].split(',')
+    target = equation[1]
+    # path:[(0, 1)]
+    step = path[0]
+
+    assert step[0] < step[1]
+    in0 = tensors[step[0]]
+    in1 = tensors[step[1]]
+    # tensors.pop(step[1])
+    # tensors.pop(step[0])
+    tgt = _compute_target_tensor(eqs[step[0]], eqs[step[1]], target)
+    assert tgt != ""
+    eq = eqs[step[0]] + ',' + eqs[step[1]] + '->' + tgt
+    eqs.pop(step[1])
+    eqs.pop(step[0])
+    eqs.append(tgt)
+    return einsumForwardOutputShape(eq, in0, in1)
+
+def EinsumGeneralV2(output, equation, *tensors, **kwargs):
+    tensors = list(tensors)
+    equation, isBinary = normalize_subscript(equation)
+    path = np.einsum_path(equation,
+                          *[np.broadcast_to(np.nan, t.shape) for t in tensors],
+                          **kwargs)
+    path = path[0][1:]
+    equation = equation.split('->')
+    eqs = equation[0].split(',')
+    target = equation[1]
+    # path:[(0, 1)]
+    step = path[0]
+
+    assert step[0] < step[1]
+    in0 = tensors[step[0]]
+    in1 = tensors[step[1]]
+    # tensors.pop(step[1])
+    # tensors.pop(step[0])
+    tgt = _compute_target_tensor(eqs[step[0]], eqs[step[1]], target)
+    assert tgt != ""
+    eq = eqs[step[0]] + ',' + eqs[step[1]] + '->' + tgt
+    eqs.pop(step[1])
+    eqs.pop(step[0])
+    eqs.append(tgt)
+    einsumForwardV2(output, eq, in0, in1)
+    # tensors.append(result)

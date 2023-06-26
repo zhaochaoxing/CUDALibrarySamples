@@ -29,4 +29,6 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-from .einsum import einsum, EinsumFunction, EinsumGeneral, Einsum
+from .einsum import einsum, EinsumFunction, EinsumGeneral, EinsumGeneralV2, \
+                    getOutputShape, Einsum, TensorMg, toTensor, fromTensor, \
+                    init, getOutputShapeMg, einsumMg

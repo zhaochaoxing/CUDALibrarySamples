@@ -35,6 +35,7 @@
 #include <cuda_fp16.hpp>
 
 #include "../../einsum.h"
+#include "../../einsum_mg.h"
 
 template<>
 struct CuTensorTypeTraits<at::Half> {
@@ -99,6 +100,121 @@ torch::Tensor einsum(
   return output_tensor;
 }
 
+std::vector<int64_t> getEinsumOutputShape(
+    std::string subscripts,
+    torch::Tensor input_0,
+    torch::Tensor input_1,
+    bool conjA = false,
+    bool conjB = false
+) {
+  std::vector<int64_t> output_shape;
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, input_0.scalar_type(), "einsum", [&] {
+    constexpr int kMaxNumModes_ = 64; // maximal number of modes supported by cuTENSOR
+    cutensorOperator_t opA = conjA ? CUTENSOR_OP_CONJ : CUTENSOR_OP_IDENTITY;
+    cutensorOperator_t opB = conjB ? CUTENSOR_OP_CONJ : CUTENSOR_OP_IDENTITY;
+    Einsum<scalar_t, int64_t, kMaxNumModes_> myEinsum(subscripts, input_0.sizes().vec(), input_1.sizes().vec(), opA, opB);
+    if (!myEinsum.isInitialized()) {
+      throw std::runtime_error("cutensor: Initialization failed.");
+    }
+    output_shape = myEinsum.getOutputShape();
+  });
+  return output_shape;
+}
+
+bool einsumV2(
+    std::string subscripts,
+    torch::Tensor input_0,
+    torch::Tensor input_1,
+    torch::Tensor output_tensor,
+    bool conjA = false,
+    bool conjB = false
+) {
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, input_0.scalar_type(), "einsum", [&] {
+    constexpr int kMaxNumModes_ = 64; // maximal number of modes supported by cuTENSOR
+    cutensorOperator_t opA = conjA ? CUTENSOR_OP_CONJ : CUTENSOR_OP_IDENTITY;
+    cutensorOperator_t opB = conjB ? CUTENSOR_OP_CONJ : CUTENSOR_OP_IDENTITY;
+    Einsum<scalar_t, int64_t, kMaxNumModes_> myEinsum(subscripts, input_0.sizes().vec(), input_1.sizes().vec(), opA, opB);
+    if (!myEinsum.isInitialized()) {
+      throw std::runtime_error("cutensor: Initialization failed.");
+    }
+    size_t worksize = myEinsum.getWorksize();
+    at::Tensor workspace = at::empty({static_cast<int>(worksize)}, at::CUDA(at::kByte));
+
+    auto stream = at::cuda::getCurrentCUDAStream().stream();
+    auto ret = myEinsum.execute(GetCuTensorHandle(),
+                                input_0.data_ptr<scalar_t>(),
+                                input_1.data_ptr<scalar_t>(),
+                                output_tensor.data_ptr<scalar_t>(),
+                                workspace.data_ptr<uint8_t>(),
+                                stream);
+
+    if (! ret) throw std::runtime_error("cutensor: Launch failed.");
+  });
+  return true;
+}
+
+bool init(const int32_t numDevices) {
+  bool ret = CutensorMgConfig::Init(numDevices);
+  if (! ret) throw std::runtime_error("cutensor: Init failed.");
+  return true;
+}
+
+bool fromTensor(TensorMg& dst, torch::Tensor src) {
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, src.scalar_type(), "fromTensor", [&] {
+    bool ret = TensorMg::fromTensor<scalar_t>(dst, src.sizes().vec(), src.data_ptr<scalar_t>());
+    if (! ret) throw std::runtime_error("cutensor: failed.");
+  });
+  return true;
+}
+
+bool toTensor(torch::Tensor dst, TensorMg& src) {
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, dst.scalar_type(), "toTensor", [&] {
+    bool ret = TensorMg::toTensor<scalar_t>(dst.sizes().vec(), dst.data_ptr<scalar_t>(), src);
+    if (! ret) throw std::runtime_error("cutensor: Launch failed.");
+  });
+  return true;
+}
+
+std::vector<int64_t> getOutputShapeMg(std::string& subscripts, TensorMg& input_0, TensorMg& input_1) {
+  EinsumMg myEinsumMg(subscripts, input_0, input_1);
+  if (!myEinsumMg.isInitialized()) {
+    throw std::runtime_error("cutensorMg: Initialization failed.");
+  }
+  return myEinsumMg.getOutputShape();
+}
+
+bool einsumMg(std::string& subscripts, TensorMg& input_0, TensorMg& input_1, TensorMg& output, torch::Tensor& origin) {
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, origin.scalar_type(), "einsumMg", [&] {
+    EinsumMg myEinsumMg(subscripts, input_0, input_1);
+    if (!myEinsumMg.isInitialized()) {
+      throw std::runtime_error("cutensor: Initialization failed.");
+    }
+    bool ret = myEinsumMg.execute<scalar_t>(input_0, input_1, output);
+    if (! ret) throw std::runtime_error("cutensor: Launch failed.");
+  });
+  return true;
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("einsum", &einsum, "Einsum");
+  m.def("getEinsumOutputShape", &getEinsumOutputShape, "getEinsumOutputShape");
+  m.def("einsumV2", &einsumV2, "EinsumV2");
+
+  pybind11::class_<TensorMg>(m, "TensorMg")
+        .def(pybind11::init<const std::vector<int64_t> &>())
+        .def("getNumModes", &TensorMg::getNumModes)
+        .def("setNumModes", &TensorMg::setNumModes)
+        .def("getBlockDevices", &TensorMg::getBlockDevices)
+        .def("getDeviceCount", &TensorMg::getDeviceCount)
+        .def("getExtent", &TensorMg::getExtent)
+        .def("getBlockSize", &TensorMg::getBlockSize)
+        .def("getData", &TensorMg::getData)
+        .def("getRemainingDevices", &TensorMg::getRemainingDevices)
+        ;
+  
+    m.def("init", &init, "init devices");
+    m.def("toTensor", &toTensor, "toTensor");
+    m.def("fromTensor", &fromTensor, "fromTensor");
+    m.def("getOutputShapeMg", &getOutputShapeMg, "getOutputShapeMg");
+    m.def("einsumMg", &einsumMg, "einsumMg");
 }

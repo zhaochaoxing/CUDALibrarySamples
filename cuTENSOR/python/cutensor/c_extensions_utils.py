@@ -59,6 +59,7 @@ if 'CUTENSOR_ROOT' in os.environ:
     library_dirs.append(versioned_path)
 
 
+
 class CustomExtension:
     modules = []
 
@@ -69,7 +70,7 @@ class CustomExtension:
             from torch.utils.cpp_extension import CUDAExtension
             ext = CUDAExtension(name,
                                 sources=sources,
-                                libraries=['cutensor'],
+                                libraries=["cutensor", "cutensorMg"],
                                 define_macros=[
                                     ('TORCH_API_INCLUDE_EXTENSION_H',),
                                     ('TORCH_EXTENSION_NAME',
@@ -77,8 +78,8 @@ class CustomExtension:
                                     ('_GLIBCXX_USE_CXX11_ABI',
                                      str(int(torch._C._GLIBCXX_USE_CXX11_ABI)))
                                 ],
-                                extra_compile_args=['-std=c++14', '-fopenmp'],
-                                extra_link_args=['-std=c++14', '-fopenmp'],
+                                extra_compile_args=['-std=c++14', '-fopenmp', '-g', '-DDEBUG=ON'],
+                                extra_link_args=['-std=c++14', '-fopenmp', '-g', '-DDEBUG=ON'],
                                 include_dirs=include_dirs,
                                 library_dirs=library_dirs,
                                 runtime_library_dirs=library_dirs)

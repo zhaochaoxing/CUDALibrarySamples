@@ -126,7 +126,7 @@ struct Einsum
 
         char modeA[kMaxNumModes_ + 2];
         uint32_t numModesA = 0;
-        for (int i = a_start; i < a_end && numModesA < kMaxNumModes_ + 2; ++i){
+        for (size_t i = a_start; i < a_end && numModesA < kMaxNumModes_ + 2; ++i){
             if (equation.at(i) != ' ') // skip spaces
             {
                 modeA[numModesA++] = equation.at(i);
@@ -135,7 +135,7 @@ struct Einsum
 
         char modeB[kMaxNumModes_ + 2];
         uint32_t numModesB = 0;
-        for (int i = b_start; i < b_end && numModesB < kMaxNumModes_ + 2; ++i){
+        for (size_t i = b_start; i < b_end && numModesB < kMaxNumModes_ + 2; ++i){
             if (equation.at(i) != ' ') // skip spaces
             {
                 modeB[numModesB++] = equation.at(i);
@@ -144,7 +144,7 @@ struct Einsum
 
         char modeC[kMaxNumModes_ + 2];
         uint32_t numModesC = 0;
-        for (int i = c_start; i < c_end && numModesC < kMaxNumModes_ + 2; ++i){
+        for (size_t i = c_start; i < c_end && numModesC < kMaxNumModes_ + 2; ++i){
             if (equation.at(i) != ' ') // skip spaces
             {
                 modeC[numModesC++] = equation.at(i);
@@ -264,7 +264,7 @@ struct Einsum
     {
         if (!isInitialized_) return {};
         std::vector<IntType> extentC(numModesC_);
-        for (int i=0; i < numModesC_; ++i)
+        for (size_t i=0; i < numModesC_; ++i)
         {
             extentC[i] = extentC_.at(numModesC_ - i - 1);
         }
@@ -379,7 +379,6 @@ struct Einsum
     uint32_t numModesA_;
     uint32_t numModesB_;
     uint32_t numModesC_;
-    bool isInitialized_;
     std::array<int, kMaxNumModes_> modesA_;
     std::array<int, kMaxNumModes_> modesB_;
     std::array<int, kMaxNumModes_> modesC_;
@@ -388,6 +387,7 @@ struct Einsum
     std::array<int64_t, kMaxNumModes_> extentC_;
     cutensorOperator_t opA_ = CUTENSOR_OP_IDENTITY;
     cutensorOperator_t opB_ = CUTENSOR_OP_IDENTITY;
+    bool isInitialized_;
 };
 
 inline cutensorHandle_t CreateCuTensorHandle() {
