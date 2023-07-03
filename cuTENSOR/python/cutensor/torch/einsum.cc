@@ -81,12 +81,15 @@ torch::Tensor einsum(
     if (!myEinsum.isInitialized()) {
       throw std::runtime_error("cutensor: Initialization failed.");
     }
-
+    if (input_0.device() != input_1.device()) {
+      throw std::runtime_error("cutensor: input0 and inpu1 not on the same device.");
+    }
     output_tensor = torch::empty(myEinsum.getOutputShape(), input_0.options());
-
+    c10::DeviceIndex device_index = input_0.device().index();
     size_t worksize = myEinsum.getWorksize();
-    at::Tensor workspace = at::empty({static_cast<int>(worksize)}, at::CUDA(at::kByte));
-
+    // at::Tensor workspace = at::empty({static_cast<int>(worksize)}, at::CUDA(at::kByte));
+    at::Tensor workspace = at::empty({static_cast<int>(worksize)}, at::device({at::kCUDA, device_index}).dtype(at::kByte));
+    CHECK_MG(cudaSetDevice(device_index));
     auto stream = at::cuda::getCurrentCUDAStream().stream();
     auto ret = myEinsum.execute(GetCuTensorHandle(),
                                 input_0.data_ptr<scalar_t>(),
@@ -137,9 +140,13 @@ bool einsumV2(
     if (!myEinsum.isInitialized()) {
       throw std::runtime_error("cutensor: Initialization failed.");
     }
+    if (input_0.device() != input_1.device()) {
+      throw std::runtime_error("cutensor: input0 and inpu1 not on the same device.");
+    }
+    c10::DeviceIndex device_index = input_0.device().index();
     size_t worksize = myEinsum.getWorksize();
-    at::Tensor workspace = at::empty({static_cast<int>(worksize)}, at::CUDA(at::kByte));
-
+    at::Tensor workspace = at::empty({static_cast<int>(worksize)}, at::device({at::kCUDA, device_index}).dtype(at::kByte));
+    CHECK_MG(cudaSetDevice(device_index));
     auto stream = at::cuda::getCurrentCUDAStream().stream();
     auto ret = myEinsum.execute(GetCuTensorHandle(),
                                 input_0.data_ptr<scalar_t>(),
@@ -201,8 +208,8 @@ std::vector<int64_t> getOutputShapeMg(std::string& subscripts, TensorMg& input_0
 //   return output;
 // }
 
-bool einsumMgV2(std::string& subscripts, TensorMg& input_0, TensorMg& input_1, TensorMg& output, torch::Tensor& origin) {
-  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, origin.scalar_type(), "einsumMg", [&] {
+bool einsumMgV2(std::string& subscripts, TensorMg& input_0, TensorMg& input_1, TensorMg& output) {
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, at::ScalarType::ComplexFloat, "einsumMg", [&] {
     EinsumMg myEinsumMg(subscripts, input_0, input_1);
     if (!myEinsumMg.isInitialized()) {
       throw std::runtime_error("cutensor: Initialization failed.");
@@ -232,6 +239,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("getData", &TensorMg::getData)
         .def("getRemainingDevices", &TensorMg::getRemainingDevices)
         .def("getShape", &TensorMg::getShape)
+        .def("getTensors", &TensorMg::getTensors)
         ;
   
     m.def("init", &init, "init devices");

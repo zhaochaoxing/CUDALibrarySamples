@@ -129,22 +129,11 @@ public:
         }
         std::reverse(block_size_.rbegin(), block_size_.rend());
         std::reverse(device_count_.rbegin(), device_count_.rend());
-        init();
+        initElements();
+        initDataUseTensor();
     }
 
-    // TensorMg (const std::vector<int64_t>& shape
-    //          ):
-    //           numModes_(shape.size()),
-    //           shape_(shape) {
-    //     block_size_.resize(numModes_, 1);
-    //     device_count_.resize(numModes_, 1);
-    //     for (uint32_t i = 0; i < numModes_; i++) {
-    //         block_size_[i] = shape[numModes_ - i - 1];
-    //     }
-    //     init();
-    // }
-
-    void init () {
+    void initElements () {
         extent_.resize(numModes_, 0);
         for (uint32_t i = 0; i < numModes_; i++) {
             extent_[i] = shape_[numModes_ - i - 1];    
@@ -158,13 +147,24 @@ public:
             block_devices_.push_back(devices[i%numDevices]);
         }
         elements_ = product(discretize(extent_, multiply(device_count_, block_size_))) / product(device_count_);
+    }
+    void initDataUseMalloc() {
         for (auto& device : this->block_devices_) {
             void* memory;
             CHECK_MG(cudaSetDevice(device));
             CHECK_MG(cudaMalloc(&memory, elements_ * kElementSize));
             this->data_.push_back(memory);
         }
-        this->isMultiGPU_ = true;
+        this->needFreeMemory_ = true;
+    }
+    void initDataUseTensor() {
+        for (auto& device : this->block_devices_) {
+            at::Tensor tmp = at::empty({static_cast<long>(elements_ * kElementSize)},
+                                             at::device({at::kCUDA, device}).dtype(at::kByte));
+            this->tensors_.push_back(tmp);
+            this->data_.push_back(tmp.data_ptr<uint8_t>());
+        }
+        this->needFreeMemory_ = false;
     }
 
     // void init (const std::vector<int64_t>& shape) {
@@ -223,7 +223,7 @@ public:
     //         CHECK_MG(cudaMalloc(&ptr, elements * kElementSize));
     //         this->data_.push_back(ptr);
     //     }
-    //     this->isMultiGPU_ = true;
+    //     this->needFreeMemory_ = true;
     // }
 
     TensorMg (const std::vector<int64_t> &shape, void* ptr) {
@@ -235,11 +235,11 @@ public:
         }
         this->block_devices_.push_back(CUTENSOR_MG_DEVICE_HOST);
         this->data_.push_back(ptr);
-        this->isMultiGPU_ = false;
+        this->needFreeMemory_ = false;
     }
 
     ~TensorMg() {
-        if (this->isMultiGPU_) {
+        if (this->needFreeMemory_) {
             for (auto& ptr : this->data_) {
                 if (ptr != nullptr) {
                     CHECK_MG(cudaFree(ptr));
@@ -386,10 +386,13 @@ public:
     std::vector<int64_t> getShape() {
         return this->shape_;
     }
+    std::vector<at::Tensor> getTensors() {
+        return this->tensors_;
+    }
 
 private:
     uint32_t numModes_;
-    bool isMultiGPU_;
+    bool needFreeMemory_;
     std::vector<int32_t> block_devices_;
     std::vector<int64_t> extent_;
     std::vector<int64_t> block_size_;
@@ -398,6 +401,7 @@ private:
     int64_t elements_;
     uint32_t remaining_devices_;
     std::vector<int64_t> shape_;
+    std::vector<at::Tensor> tensors_;
 };
 
 class EinsumMg {

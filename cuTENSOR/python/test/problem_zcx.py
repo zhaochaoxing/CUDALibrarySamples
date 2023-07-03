@@ -3,14 +3,14 @@ import numpy as np
 from copy import deepcopy
 from os.path import exists, dirname, abspath
 from os import makedirs
-import multiprocessing as mp
-from math import ceil
+# import multiprocessing as mp
+# from math import ceil
 import time
-import nvtx
+# import nvtx
 from cutensor.torch import EinsumGeneral, EinsumGeneralV2, getOutputShape, \
                            TensorMg, toTensor, fromTensor, init, getOutputShapeMg, einsumMgV2
-from torch.profiler import profile, record_function, ProfilerActivity
-# torch.set_printoptions(edgeitems=20)
+# from torch.profiler import profile, record_function, ProfilerActivity
+# torch.set_printoptions(edgeitems=5)
 
 total_get_tensor_time = 0
 
@@ -348,15 +348,15 @@ if __name__ == '__main__':
 
     x_cpu = torch.randn([2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2], dtype=torch.complex64)
     y_cpu = torch.randn([2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2], dtype=torch.complex64)
-   
+    print(torch.randn([2,2], dtype=torch.complex64))
     equation = "XNPGeRAbKndLfMBhTQmcDiYEkHSVC,XQlaFgIJGHjUPWOTL->NeRAbKndfMBhmcDiYEklaFgIJjUWOSVC"
     # x_cpu = torch.randn([1024, 1024, 1024], dtype=torch.complex64)
     # y_cpu = torch.randn([1024, 1024, 1024], dtype=torch.complex64)
     # equation = "abj,bax->jx"
-    for _ in range(2):
+    for _ in range(1):
         print(f"3", flush=True)
 
-        blockSize =   [2, 1, 2, 2, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+        blockSize =   [1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
         deviceCount = [3 - b for b in blockSize]
         x_mg = TensorMg(x_cpu.shape, blockSize, deviceCount)
         assert fromTensor(x_mg, x_cpu)
@@ -372,23 +372,23 @@ if __name__ == '__main__':
         shape = getOutputShapeMg(equation, x_mg, y_mg)
         # print(shape)
         # quit()
-        blockSize =   [2, 1, 2, 2, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+        blockSize =   [1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
         deviceCount = [3 - b for b in blockSize]
         ans_mg = TensorMg(shape, blockSize, deviceCount)
-        assert einsumMgV2(equation, x_mg, y_mg, ans_mg, x_cpu)
+        assert einsumMgV2(equation, x_mg, y_mg, ans_mg)
 
         # ans_mg = my_einsum_mg(equation, x_mg, y_mg, x_cpu)
         torch.cuda.synchronize()
         end = time.perf_counter()
         print(f"multi gpu cost:{end-start}", flush=True)
-        # mg_result_cpu = tensormg_to_Tensor(ans_mg)
-        del ans_mg
+        mg_result_cpu = tensormg_to_Tensor(ans_mg)
+        # del ans_mg
         del x_mg
         del y_mg
 
-    x_cuda = x_cpu.to('cuda:0')
-    y_cuda = y_cpu.to('cuda:0')
-    for _ in range(2):
+        x_cuda = x_cpu.to('cuda:1')
+        y_cuda = y_cpu.to('cuda:1')
+    # for _ in range(2):
         print(f"3", flush=True)
         torch.cuda.synchronize()
         start = time.perf_counter()
@@ -396,25 +396,21 @@ if __name__ == '__main__':
         torch.cuda.synchronize()
         end = time.perf_counter()
         print(f"single gpu cost:{end-start}")
-    del x_cuda
-    del y_cuda
-    del ans
-  
-        
-
-
-    
-    # if not torch.allclose(mg_result_cpu, ans.to('cpu'), atol=1e-03, rtol=1e-01):
-    #     print(f"step[1] = {equation}")
-    #     print(f"x = {x_cpu.shape}")
-    #     print(f"y = {y_cpu.shape}")
-    #     print(f"ans = {ans.shape}")
-    #     print(f"mg_result_cpu = {mg_result_cpu.shape}")
-    #     print(f"ans = {ans}")
-    #     print(f"mg_result_cpu = {mg_result_cpu}")
-    #     print("failed-----")
-    # else:
-    #     print("einsumMg success.")
+        del x_cuda
+        del y_cuda
+    # del ans
+        ans_cpu = ans.to('cpu')
+        if not torch.allclose(mg_result_cpu, ans_cpu, atol=1e-03, rtol=1e-01):
+            print(f"step[1] = {equation}")
+            print(f"x = {x_cpu.shape}")
+            print(f"y = {y_cpu.shape}")
+            print(f"ans = {ans_cpu.shape}")
+            print(f"mg_result_cpu = {mg_result_cpu.shape}")
+            # print(ans)
+            # print(mg_result_cpu)
+            print("failed-----")
+        else:
+            print("einsumMg success.")
     quit()
     # x = torch.randn([40, 50, 60, 70], dtype=torch.complex64)
     # mg = TensorMg(x.shape)
