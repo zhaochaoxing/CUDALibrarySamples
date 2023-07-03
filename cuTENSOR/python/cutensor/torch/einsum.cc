@@ -183,7 +183,25 @@ std::vector<int64_t> getOutputShapeMg(std::string& subscripts, TensorMg& input_0
   return myEinsumMg.getOutputShape();
 }
 
-bool einsumMg(std::string& subscripts, TensorMg& input_0, TensorMg& input_1, TensorMg& output, torch::Tensor& origin) {
+// TensorMg einsumMg(std::string& subscripts, TensorMg& input_0, TensorMg& input_1, torch::Tensor& origin) {
+//   TensorMg output;
+//   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, origin.scalar_type(), "einsumMg", [&] {
+//     EinsumMg myEinsumMg(subscripts, input_0, input_1);
+//     if (!myEinsumMg.isInitialized()) {
+//       throw std::runtime_error("cutensor: Initialization failed.");
+//     }
+//     std::vector<int64_t> shape = myEinsumMg.getOutputShape();
+//     if (shape.size() < 1) {
+//       throw std::runtime_error("cutensorMg: shape error.");
+//     }
+//     output.init(shape);
+//     bool ret = myEinsumMg.execute<scalar_t>(input_0, input_1, output);
+//     if (! ret) throw std::runtime_error("cutensor: Launch failed.");
+//   });
+//   return output;
+// }
+
+bool einsumMgV2(std::string& subscripts, TensorMg& input_0, TensorMg& input_1, TensorMg& output, torch::Tensor& origin) {
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, origin.scalar_type(), "einsumMg", [&] {
     EinsumMg myEinsumMg(subscripts, input_0, input_1);
     if (!myEinsumMg.isInitialized()) {
@@ -201,7 +219,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("einsumV2", &einsumV2, "EinsumV2");
 
   pybind11::class_<TensorMg>(m, "TensorMg")
-        .def(pybind11::init<const std::vector<int64_t> &>())
+        // .def(pybind11::init<const std::vector<int64_t> &>())
+        .def(pybind11::init<const std::vector<int64_t> &,
+                            const std::vector<int64_t> &,
+                            const std::vector<int32_t> &>())
         .def("getNumModes", &TensorMg::getNumModes)
         .def("setNumModes", &TensorMg::setNumModes)
         .def("getBlockDevices", &TensorMg::getBlockDevices)
@@ -210,11 +231,13 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("getBlockSize", &TensorMg::getBlockSize)
         .def("getData", &TensorMg::getData)
         .def("getRemainingDevices", &TensorMg::getRemainingDevices)
+        .def("getShape", &TensorMg::getShape)
         ;
   
     m.def("init", &init, "init devices");
     m.def("toTensor", &toTensor, "toTensor");
     m.def("fromTensor", &fromTensor, "fromTensor");
     m.def("getOutputShapeMg", &getOutputShapeMg, "getOutputShapeMg");
-    m.def("einsumMg", &einsumMg, "einsumMg");
+    // m.def("einsumMg", &einsumMg, "einsumMg");
+    m.def("einsumMgV2", &einsumMgV2, "einsumMgV2");
 }

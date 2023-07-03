@@ -110,8 +110,66 @@ cutensorMgHandle_t& GetHandle() {
 class TensorMg {
 public:
     const int64_t kElementSize = 8;
-    // TensorMg (const std::vector<int64_t> &shape) :
-    //           numModes_(shape.size()) {
+    TensorMg () {}
+    TensorMg (const std::vector<int64_t>& shape, 
+              const std::vector<int64_t>& blockSize,
+              const std::vector<int32_t>& deviceCount
+             ):
+              numModes_(shape.size()),
+              block_size_(blockSize),
+              device_count_(deviceCount),
+              shape_(shape) {
+        if (numModes_ != block_size_.size() || numModes_ != device_count_.size()) {
+            throw std::runtime_error("cutensorMg error: numModes_ != block_size_.size() || numModes_ != device_count_.size()");
+        }
+        for (size_t i = 0; i < numModes_; i++) {
+            if (shape_[i] < block_size_[i]) {
+                throw std::runtime_error("cutensorMg error: shape_[i] < block_size_[i]");
+            }
+        }
+        std::reverse(block_size_.rbegin(), block_size_.rend());
+        std::reverse(device_count_.rbegin(), device_count_.rend());
+        init();
+    }
+
+    // TensorMg (const std::vector<int64_t>& shape
+    //          ):
+    //           numModes_(shape.size()),
+    //           shape_(shape) {
+    //     block_size_.resize(numModes_, 1);
+    //     device_count_.resize(numModes_, 1);
+    //     for (uint32_t i = 0; i < numModes_; i++) {
+    //         block_size_[i] = shape[numModes_ - i - 1];
+    //     }
+    //     init();
+    // }
+
+    void init () {
+        extent_.resize(numModes_, 0);
+        for (uint32_t i = 0; i < numModes_; i++) {
+            extent_[i] = shape_[numModes_ - i - 1];    
+        }
+
+        const std::vector<int32_t>& devices = CutensorMgConfig::GetDevices();
+        int32_t numDevices = devices.size();
+        
+        int32_t n = product(device_count_);
+        for(int32_t i=0; i < n; ++i) {
+            block_devices_.push_back(devices[i%numDevices]);
+        }
+        elements_ = product(discretize(extent_, multiply(device_count_, block_size_))) / product(device_count_);
+        for (auto& device : this->block_devices_) {
+            void* memory;
+            CHECK_MG(cudaSetDevice(device));
+            CHECK_MG(cudaMalloc(&memory, elements_ * kElementSize));
+            this->data_.push_back(memory);
+        }
+        this->isMultiGPU_ = true;
+    }
+
+    // void init (const std::vector<int64_t>& shape) {
+    //     this->shape_ = shape;
+    //     numModes_ = shape.size();
     //     extent_.resize(numModes_, 0);
     //     block_size_.resize(numModes_, 0);
     //     device_count_.resize(numModes_, 1);
@@ -124,73 +182,52 @@ public:
     //         }
     //     }
     //     const std::vector<int32_t>& devices = CutensorMgConfig::GetDevices();
-    //     int32_t numDevices = devices.size();
-    //     block_size_[maxId] = extent_[maxId] > 16 ? extent_[maxId] / numDevices : extent_[maxId];
-    //     device_count_[maxId] = block_size_[maxId] == extent_[maxId] ? 1 : numDevices;
-    //     int32_t n = product(device_count_);
-    //     for(int32_t i=0; i < n; ++i) {
-    //         block_devices_.push_back(devices[i%numDevices]);
+    //     size_t numDevices = devices.size();
+    //     // block_size_[maxId] = ceil(extent_[maxId] * 0.1 / numDevices);
+    //     if (numModes_ > 20) {
+    //         block_size_[0] = 512;
+    //         // block_size_[8] = 1;
+    //         // block_size_[6] = 1;
+    //         // block_size_[14] = 1;
+    //     } else {
+    //         block_size_[0] = 512;
+    //         // block_size_[7] = 1;
+    //         // block_size_[8] = 1;
+    //         // block_size_[16] = 1;
     //     }
-    //     elements_ = product(discretize(extent_, multiply(device_count_, block_size_))) / product(device_count_);
-    //     std::vector<void*> memoryA;
-    //     for (auto& device : this->block_devices_) {
-    //         void* memory;
-    //         CHECK_MG(cudaSetDevice(device));
-    //         CHECK_MG(cudaMalloc(&memory, elements_ * kElementSize));
-    //         this->data_.push_back(memory);
+
+    //     remaining_devices_ = numDevices;
+    //     bool changed = true;
+    //     while (changed) {
+    //         changed = false;
+    //         for (int i = numModes_ - 1; i >= 0 && remaining_devices_ > 1; i = i - 1) {
+    //             int32_t maxDeviceCount = extent_[i] / block_size_[i];
+    //             if (device_count_[i] < maxDeviceCount) {
+    //                 device_count_[i] *= 2;
+    //                 remaining_devices_ /= 2;
+	// 	            changed = true;
+    //             }
+    //         }
+    //     }
+
+    //     int64_t elements = 1;
+    //     for (size_t i = 0; i < numModes_; i++) {
+    //         int64_t numBlocks = (extent_[i] + block_size_[i] - 1) / block_size_[i];
+    //         int64_t numBlocksPerDevice = (numBlocks + device_count_[i] - 1) / device_count_[i];
+    //         elements *= numBlocksPerDevice * block_size_[i];
+    //     }
+
+    //     for (size_t i = 0; i < numDevices; i++) {
+    //         CHECK_MG(cudaSetDevice(i));
+    //         void* ptr;
+    //         CHECK_MG(cudaMalloc(&ptr, elements * kElementSize));
+    //         this->data_.push_back(ptr);
     //     }
     //     this->isMultiGPU_ = true;
     // }
 
-    TensorMg (const std::vector<int64_t> &shape) :
-              numModes_(shape.size()) {
-    
-        extent_.resize(numModes_, 0);
-        block_size_.resize(numModes_, 0);
-        device_count_.resize(numModes_, 1);
-        size_t maxId = 0;
-        for (uint32_t i = 0; i < numModes_; i++) {
-            extent_[i] = shape[numModes_ - i - 1];
-            block_size_[i] = extent_[i];
-            if (extent_[i] > extent_[maxId]) {
-                maxId = i;
-            }
-        }
-        const std::vector<int32_t>& devices = CutensorMgConfig::GetDevices();
-        size_t numDevices = devices.size();
-        block_size_[maxId] = ceil(extent_[maxId] * 0.1 / numDevices);
-
-        remaining_devices_ = numDevices;
-        bool changed = true;
-        while (changed) {
-            changed = false;
-            for (int i = numModes_ - 1; i >= 0 && remaining_devices_ > 1; i = i - 1) {
-                int32_t maxDeviceCount = extent_[i] / block_size_[i];
-                if (device_count_[i] < maxDeviceCount) {
-                    device_count_[i] *= 2;
-                    remaining_devices_ /= 2;
-		            changed = true;
-                }
-            }
-        }
-
-        int64_t elements = 1;
-        for (size_t i = 0; i < numModes_; i++) {
-            int64_t numBlocks = (extent_[i] + block_size_[i] - 1) / block_size_[i];
-            int64_t numBlocksPerDevice = (numBlocks + device_count_[i] - 1) / device_count_[i];
-            elements *= numBlocksPerDevice * block_size_[i];
-        }
-
-        for (size_t i = 0; i < numDevices; i++) {
-            CHECK_MG(cudaSetDevice(i));
-            void* ptr;
-            CHECK_MG(cudaMalloc(&ptr, elements * kElementSize));
-            this->data_.push_back(ptr);
-        }
-        this->isMultiGPU_ = true;
-    }
-
     TensorMg (const std::vector<int64_t> &shape, void* ptr) {
+        this->shape_ = shape;
         this->numModes_ = shape.size();
         extent_.resize(this->numModes_, 0);
         for (uint32_t i = 0; i < this->numModes_; i++) {
@@ -203,8 +240,10 @@ public:
 
     ~TensorMg() {
         if (this->isMultiGPU_) {
-            for (auto& memory : this->data_) {
-                CHECK_MG(cudaFree(memory));
+            for (auto& ptr : this->data_) {
+                if (ptr != nullptr) {
+                    CHECK_MG(cudaFree(ptr));
+                }
             }
         }
     }
@@ -280,11 +319,12 @@ public:
             src.getExtent().data(), NULL, NULL, NULL,
             NULL, src.getBlockDevices().size(), src.getBlockDevices().data(), cudaType));
 
-        const std::vector<int32_t>& devices = CutensorMgConfig::GetDevices();
+        // const std::vector<int32_t>& devices = CutensorMgConfig::GetDevices();
         cutensorMgTensorDescriptor_t descDst;
         CHECK_MG(cutensorMgCreateTensorDescriptor(handle, &descDst, dst.getNumModes(),
             dst.getExtent().data(), NULL, dst.getBlockSize().data(), NULL,
-            dst.getDeviceCount().data(), devices.size() / dst.getRemainingDevices(), devices.data(), cudaType));
+            dst.getDeviceCount().data(), dst.getBlockDevices().size(), dst.getBlockDevices().data(), cudaType));
+            // dst.getDeviceCount().data(), devices.size() / dst.getRemainingDevices(), devices.data(), cudaType));
 
         copyMg(dst, descDst, src, descSrc);
 
@@ -300,10 +340,11 @@ public:
         const cudaDataType_t cudaType = CuTensorTypeTraits<ComputeType>::cudaType;
         const cutensorMgHandle_t& handle = GetHandle();
 
-        const std::vector<int32_t>& devices = CutensorMgConfig::GetDevices();
+        // const std::vector<int32_t>& devices = CutensorMgConfig::GetDevices();
         CHECK_MG(cutensorMgCreateTensorDescriptor(handle, &descSrc, src.getNumModes(),
             src.getExtent().data(), NULL, src.getBlockSize().data(), NULL,
-            src.getDeviceCount().data(), devices.size() / src.getRemainingDevices(), devices.data(), cudaType));
+            src.getDeviceCount().data(), src.getBlockDevices().size(), src.getBlockDevices().data(), cudaType));
+            // src.getDeviceCount().data(), devices.size() / src.getRemainingDevices(), devices.data(), cudaType));
 
         TensorMg dst(shape, ptrDst);
         cutensorMgTensorDescriptor_t descDst;
@@ -342,6 +383,9 @@ public:
     uint32_t getRemainingDevices() {
         return this->remaining_devices_;
     }
+    std::vector<int64_t> getShape() {
+        return this->shape_;
+    }
 
 private:
     uint32_t numModes_;
@@ -353,6 +397,7 @@ private:
     std::vector<void*> data_;
     int64_t elements_;
     uint32_t remaining_devices_;
+    std::vector<int64_t> shape_;
 };
 
 class EinsumMg {
@@ -515,19 +560,24 @@ public:
         const std::vector<int32_t>& devices = CutensorMgConfig::GetDevices();
         const cutensorMgHandle_t& handle = GetHandle();
         cutensorMgTensorDescriptor_t descA;
+        // CHECK_MG(cutensorMgCreateTensorDescriptor(handle, &descA, A.getNumModes(),
+        //     A.getExtent().data(), NULL, A.getBlockSize().data(), NULL,
+        //     A.getDeviceCount().data(), devices.size() / A.getRemainingDevices(), devices.data(), cudaType));
+
         CHECK_MG(cutensorMgCreateTensorDescriptor(handle, &descA, A.getNumModes(),
             A.getExtent().data(), NULL, A.getBlockSize().data(), NULL,
-            A.getDeviceCount().data(), devices.size() / A.getRemainingDevices(), devices.data(), cudaType));
+            A.getDeviceCount().data(), A.getBlockDevices().size(), A.getBlockDevices().data(), cudaType));
         
         cutensorMgTensorDescriptor_t descB;
         CHECK_MG(cutensorMgCreateTensorDescriptor(handle, &descB, B.getNumModes(),
             B.getExtent().data(), NULL, B.getBlockSize().data(), NULL,
-            B.getDeviceCount().data(), devices.size() / B.getRemainingDevices(), devices.data(), cudaType));
+            B.getDeviceCount().data(),  B.getBlockDevices().size(), B.getBlockDevices().data(), cudaType));
+            // B.getDeviceCount().data(), devices.size() / B.getRemainingDevices(), devices.data(), cudaType));
         
         cutensorMgTensorDescriptor_t descC;
         CHECK_MG(cutensorMgCreateTensorDescriptor(handle, &descC, C.getNumModes(),
             C.getExtent().data(), NULL, C.getBlockSize().data(), NULL,
-            C.getDeviceCount().data(), devices.size() / C.getRemainingDevices(), devices.data(), cudaType));
+            C.getDeviceCount().data(),  C.getBlockDevices().size(), C.getBlockDevices().data(), cudaType));
 
         const cutensorWorksizePreference_t kWorksizePreference = CUTENSOR_WORKSPACE_RECOMMENDED;
         cutensorMgContractionDescriptor_t contractionDesc;
@@ -573,11 +623,33 @@ public:
         CHECK_MG(cudaGetDevice(&currentDeviceId));
         float kAlpha = 1;
         float kBeta = 0;
-        CHECK_MG(cutensorMgContraction(handle, plan, &kAlpha,
-                const_cast<const void**>(A.getData().data()),
-                const_cast<const void**>(B.getData().data()), &kBeta, 
-                const_cast<const void**>(C.getData().data()), C.getData().data(),
-                workspaceDevice.data(), workspaceHost, streams.data()));
+
+        float minElapsed = 0;
+        const int nRep = 3; // for stable timings
+        for (auto& deviceId : devices) {
+            CHECK_MG(cudaSetDevice(deviceId));
+            CHECK_MG(cudaDeviceSynchronize());
+        }
+        for (int rep = 0; rep < nRep; rep++) {
+            const auto start = std::chrono::steady_clock::now();
+            CHECK_MG(cutensorMgContraction(handle, plan, &kAlpha,
+                    const_cast<const void**>(A.getData().data()),
+                    const_cast<const void**>(B.getData().data()), &kBeta, 
+                    const_cast<const void**>(C.getData().data()), C.getData().data(),
+                    workspaceDevice.data(), workspaceHost, streams.data()));
+            for (auto& deviceId : devices) {
+                CHECK_MG(cudaSetDevice(deviceId));
+                CHECK_MG(cudaDeviceSynchronize());
+            }
+            const auto end = std::chrono::steady_clock::now();
+            std::chrono::duration<double, std::milli> dur = end - start;
+            if (minElapsed == 0 || minElapsed > dur.count()) {
+                minElapsed = dur.count();
+            }
+            printf("multi-gpu execution, rep:%d, took: %.2e millisec.\n", rep, minElapsed);
+        }
+        printf("multi-gpu execution minElapsed: %.2e millisec.\n", minElapsed);
+
         CHECK_MG(cudaSetDevice(currentDeviceId));
         
         CHECK_MG(cudaFreeHost(workspaceHost));

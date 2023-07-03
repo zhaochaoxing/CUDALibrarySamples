@@ -33,7 +33,8 @@ import torch
 import torch.autograd
 import numpy as np
 from .binding import einsum, einsumV2, getEinsumOutputShape, TensorMg, \
-                     toTensor, fromTensor, init, getOutputShapeMg, einsumMg
+                     toTensor, fromTensor, init, getOutputShapeMg, \
+                     einsumMgV2
 from ..common import normalize_subscript
 
 class EinsumFunction(torch.autograd.Function):

@@ -31,4 +31,4 @@
 
 from .einsum import einsum, EinsumFunction, EinsumGeneral, EinsumGeneralV2, \
                     getOutputShape, Einsum, TensorMg, toTensor, fromTensor, \
-                    init, getOutputShapeMg, einsumMg
+                    init, getOutputShapeMg, einsumMgV2
