@@ -346,8 +346,17 @@ if __name__ == '__main__':
     
     # device = 'cuda:0'
     init(torch.cuda.device_count())
-    torch.set_printoptions(edgeitems=5)
-    torch.set_printoptions(threshold=10)
+    torch.set_printoptions(edgeitems=3)
+    torch.set_printoptions(threshold=102)
+
+    x_cpu = torch.randn([2, 2, 2], dtype=torch.complex64)
+    blockSize =   [1, 1, 2]
+    deviceCount = [3 - b for b in blockSize]
+    x_mg = TensorMg(x_cpu.shape, blockSize, deviceCount)
+    assert fromTensor(x_mg, x_cpu)
+    ts = x_mg.getTensors()
+    for t in ts:
+        print(t)
     # y_cpu = torch.randn([2, 2, 2, 2, 2, 2, 2, 2], dtype=torch.complex64)
     
     x_cpu = torch.randn([2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2], dtype=torch.complex64)
@@ -358,6 +367,7 @@ if __name__ == '__main__':
     # y_cpu = torch.randn([1024, 1024, 1024], dtype=torch.complex64)
     # equation = "abj,bax->jx"
     
+    print("test begin")
 
     for _ in range(1):
         print(f"3", flush=True)
@@ -370,6 +380,7 @@ if __name__ == '__main__':
         deviceCount = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
         y_mg = TensorMg(y_cpu.shape, blockSize, deviceCount)
         assert fromTensor(y_mg, y_cpu)
+        
         # x_mg = tensor_to_mg(x_cpu)
         # y_mg = tensor_to_mg(y_cpu)
         print(f"1", flush=True)
