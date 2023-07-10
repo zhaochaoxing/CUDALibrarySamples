@@ -629,29 +629,28 @@ public:
         float kBeta = 0;
 
         float minElapsed = 0;
-        const int nRep = 3; // for stable timings
+        
         for (auto& deviceId : devices) {
             CHECK_MG(cudaSetDevice(deviceId));
             CHECK_MG(cudaDeviceSynchronize());
         }
-        for (int rep = 0; rep < nRep; rep++) {
-            const auto start = std::chrono::steady_clock::now();
-            CHECK_MG(cutensorMgContraction(handle, plan, &kAlpha,
-                    const_cast<const void**>(A.getData().data()),
-                    const_cast<const void**>(B.getData().data()), &kBeta, 
-                    const_cast<const void**>(C.getData().data()), C.getData().data(),
-                    workspaceDevice.data(), workspaceHost, streams.data()));
-            for (auto& deviceId : devices) {
-                CHECK_MG(cudaSetDevice(deviceId));
-                CHECK_MG(cudaDeviceSynchronize());
-            }
-            const auto end = std::chrono::steady_clock::now();
-            std::chrono::duration<double, std::milli> dur = end - start;
-            if (minElapsed == 0 || minElapsed > dur.count()) {
-                minElapsed = dur.count();
-            }
-            printf("multi-gpu execution, rep:%d, took: %.2e millisec.\n", rep, minElapsed);
+        
+        const auto start = std::chrono::steady_clock::now();
+        CHECK_MG(cutensorMgContraction(handle, plan, &kAlpha,
+                const_cast<const void**>(A.getData().data()),
+                const_cast<const void**>(B.getData().data()), &kBeta, 
+                const_cast<const void**>(C.getData().data()), C.getData().data(),
+                workspaceDevice.data(), workspaceHost, streams.data()));
+        for (auto& deviceId : devices) {
+            CHECK_MG(cudaSetDevice(deviceId));
+            CHECK_MG(cudaDeviceSynchronize());
         }
+        const auto end = std::chrono::steady_clock::now();
+        std::chrono::duration<double, std::milli> dur = end - start;
+        if (minElapsed == 0 || minElapsed > dur.count()) {
+            minElapsed = dur.count();
+        }
+        
         printf("multi-gpu execution minElapsed: %.2e millisec.\n", minElapsed);
 
         CHECK_MG(cudaSetDevice(currentDeviceId));

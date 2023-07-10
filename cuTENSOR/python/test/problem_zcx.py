@@ -11,6 +11,7 @@ from cutensor.torch import EinsumGeneral, EinsumGeneralV2, getOutputShape, \
                            TensorMg, toTensor, fromTensor, init, getOutputShapeMg, einsumMgV2
 # from torch.profiler import profile, record_function, ProfilerActivity
 # torch.set_printoptions(edgeitems=5)
+# torch.set_printoptions(profile="default")
 
 total_get_tensor_time = 0
 
@@ -345,18 +346,23 @@ if __name__ == '__main__':
     
     # device = 'cuda:0'
     init(torch.cuda.device_count())
-
+    torch.set_printoptions(edgeitems=5)
+    torch.set_printoptions(threshold=10)
+    # y_cpu = torch.randn([2, 2, 2, 2, 2, 2, 2, 2], dtype=torch.complex64)
+    
     x_cpu = torch.randn([2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2], dtype=torch.complex64)
     y_cpu = torch.randn([2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2], dtype=torch.complex64)
-    print(torch.randn([2,2], dtype=torch.complex64))
+    
     equation = "XNPGeRAbKndLfMBhTQmcDiYEkHSVC,XQlaFgIJGHjUPWOTL->NeRAbKndfMBhmcDiYEklaFgIJjUWOSVC"
     # x_cpu = torch.randn([1024, 1024, 1024], dtype=torch.complex64)
     # y_cpu = torch.randn([1024, 1024, 1024], dtype=torch.complex64)
     # equation = "abj,bax->jx"
+    
+
     for _ in range(1):
         print(f"3", flush=True)
 
-        blockSize =   [1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+        blockSize =   [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1]
         deviceCount = [3 - b for b in blockSize]
         x_mg = TensorMg(x_cpu.shape, blockSize, deviceCount)
         assert fromTensor(x_mg, x_cpu)
@@ -406,8 +412,8 @@ if __name__ == '__main__':
             print(f"y = {y_cpu.shape}")
             print(f"ans = {ans_cpu.shape}")
             print(f"mg_result_cpu = {mg_result_cpu.shape}")
-            # print(ans)
-            # print(mg_result_cpu)
+            print(ans_cpu.reshape([2**32]))
+            print(mg_result_cpu.reshape([2**32]))
             print("failed-----")
         else:
             print("einsumMg success.")

@@ -354,22 +354,21 @@ struct Einsum
             typename CuTensorTypeTraits<ComputeType>::ScalarType beta = 0;
 
             float minElapsed = 0;
-            const int nRep = 3; // for stable timings
+            
             cudaDeviceSynchronize();
-            for (int rep = 0; rep < nRep; rep++) {
-                const auto start = std::chrono::steady_clock::now();
-                HANDLE_ERROR(cutensorContraction(handle, &plan,
-                            (void*) &alpha, A_raw, B_raw,
-                            (void*) &beta,  C_raw, C_raw,
-                            work_raw, kWorksize_, stream));
-                cudaDeviceSynchronize();
-                const auto end = std::chrono::steady_clock::now();
-                std::chrono::duration<double, std::milli> dur = end - start;
-                if (minElapsed == 0 || minElapsed > dur.count()) {
-                    minElapsed = dur.count();
-                }
-                printf("single-gpu execution, rep:%d, took: %.2e millisec.\n", rep, minElapsed);
+            
+            const auto start = std::chrono::steady_clock::now();
+            HANDLE_ERROR(cutensorContraction(handle, &plan,
+                        (void*) &alpha, A_raw, B_raw,
+                        (void*) &beta,  C_raw, C_raw,
+                        work_raw, kWorksize_, stream));
+            cudaDeviceSynchronize();
+            const auto end = std::chrono::steady_clock::now();
+            std::chrono::duration<double, std::milli> dur = end - start;
+            if (minElapsed == 0 || minElapsed > dur.count()) {
+                minElapsed = dur.count();
             }
+            
             printf("single-gpu execution minElapsed: %.2e millisec.\n", minElapsed);
         }
         else
