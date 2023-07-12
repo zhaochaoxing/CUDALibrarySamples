@@ -322,7 +322,6 @@ public:
             src.getExtent().data(), NULL, NULL, NULL,
             NULL, src.getBlockDevices().size(), src.getBlockDevices().data(), cudaType));
 
-        // const std::vector<int32_t>& devices = CutensorMgConfig::GetDevices();
         cutensorMgTensorDescriptor_t descDst;
         CHECK_MG(cutensorMgCreateTensorDescriptor(handle, &descDst, dst.getNumModes(),
             dst.getExtent().data(), NULL, dst.getBlockSize().data(), NULL,
@@ -343,7 +342,6 @@ public:
         const cudaDataType_t cudaType = CuTensorTypeTraits<ComputeType>::cudaType;
         const cutensorMgHandle_t& handle = GetHandle();
 
-        // const std::vector<int32_t>& devices = CutensorMgConfig::GetDevices();
         CHECK_MG(cutensorMgCreateTensorDescriptor(handle, &descSrc, src.getNumModes(),
             src.getExtent().data(), NULL, src.getBlockSize().data(), NULL,
             src.getDeviceCount().data(), src.getBlockDevices().size(), src.getBlockDevices().data(), cudaType));
