@@ -355,6 +355,7 @@ if __name__ == '__main__':
     x_mg = TensorMg(x_cpu.shape, blockSize, deviceCount)
     assert fromTensor(x_mg, x_cpu)
     ts = x_mg.getTensors()
+    print(x_cpu)
     for t in ts:
         print(t)
     # y_cpu = torch.randn([2, 2, 2, 2, 2, 2, 2, 2], dtype=torch.complex64)

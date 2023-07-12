@@ -11,7 +11,7 @@
 
 #include <cuda.h>
 #include <cuda_fp16.hpp>
-
+#include <c10/core/TensorOptions.h>
 #include <cuda_runtime.h>
 #include <cuComplex.h>
 #include "cutensorMg.h"
@@ -159,10 +159,13 @@ public:
     }
     void initDataUseTensor() {
         for (auto& device : this->block_devices_) {
-            at::Tensor tmp = at::empty({static_cast<long>(elements_ * kElementSize)},
-                                             at::device({at::kCUDA, device}).dtype(at::kByte));
+            at::Tensor tmp = at::empty(elements_,
+                                       at::TensorOptions(at::device({at::kCUDA, device})
+                                                        .dtype(at::ScalarType::ComplexFloat)));
+           
             this->tensors_.push_back(tmp);
-            this->data_.push_back(tmp.data_ptr<uint8_t>());
+            this->data_.push_back(tmp.data_ptr());
+          
         }
         this->needFreeMemory_ = false;
     }
