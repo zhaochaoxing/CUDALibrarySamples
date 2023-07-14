@@ -47,7 +47,7 @@ def tensor_to_mg(tensor:torch.Tensor):
     return t_mg
 
 def tensormg_to_Tensor(t_mg:TensorMg, dtype=torch.complex64):
-    res = torch.empty(t_mg.getShape(), dtype=dtype)
+    res = torch.empty(t_mg.getShape(), dtype=dtype, device=torch.device("cuda:0"))
     assert toTensor(res, t_mg)
     return res
 
@@ -55,10 +55,10 @@ def reshape_mg(t_mg:TensorMg, shape):
     t_cpu = tensormg_to_Tensor(t_mg)
     return tensor_to_mg(t_cpu.reshape(shape))
 
-def my_einsum_mg(subscripts:str, input_0:TensorMg, input_1:TensorMg, origin:torch.Tensor):
+def my_einsum_mg(subscripts:str, input_0:TensorMg, input_1:TensorMg):
     shape = getOutputShapeMg(subscripts, input_0, input_1)
     ans_mg = TensorMg(shape)
-    assert einsumMgV2(subscripts, input_0, input_1, ans_mg, origin)
+    assert einsumMgV2(subscripts, input_0, input_1, ans_mg)
     return ans_mg
 
 def tensor_contraction_sparse(tensors, contraction_scheme, use_cutensor=True):
@@ -346,19 +346,26 @@ if __name__ == '__main__':
     
     # device = 'cuda:0'
     init(torch.cuda.device_count())
-    torch.set_printoptions(edgeitems=3)
-    torch.set_printoptions(threshold=102)
+    # torch.set_printoptions(edgeitems=3)
+    # torch.set_printoptions(threshold=102)
 
-    x_cpu = torch.randn([2, 2, 2], dtype=torch.complex64)
-    blockSize =   [1, 1, 2]
+    x_cpu = torch.randn([2, 2, 2], dtype=torch.complex64, device=torch.device('cuda:0'))
+    blockSize =   [1, 2, 2]
     deviceCount = [3 - b for b in blockSize]
-    x_mg = TensorMg(x_cpu.shape, blockSize, deviceCount)
+    shape = torch.tensor(x_cpu.shape)
+    blockSize = shape.clone()
+    blockSize[:1] = 1
+    deviceCount = 3 - blockSize
+    x_mg = TensorMg(shape.tolist(), blockSize.tolist(), deviceCount.tolist())
     assert fromTensor(x_mg, x_cpu)
     ts = x_mg.getTensors()
     print(x_cpu)
     for t in ts:
         print(t)
-    # y_cpu = torch.randn([2, 2, 2, 2, 2, 2, 2, 2], dtype=torch.complex64)
+    x_res = torch.randn([2, 2, 2], dtype=torch.complex64, device=torch.device('cuda:0'))
+    toTensor(x_res, x_mg)
+    print(torch.allclose(x_cpu, x_res))
+    quit()
     
     x_cpu = torch.randn([2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2], dtype=torch.complex64)
     y_cpu = torch.randn([2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2], dtype=torch.complex64)
@@ -381,6 +388,9 @@ if __name__ == '__main__':
         deviceCount = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
         y_mg = TensorMg(y_cpu.shape, blockSize, deviceCount)
         assert fromTensor(y_mg, y_cpu)
+
+        y1_cpu = tensormg_to_Tensor(y_mg)
+        print(torch.allclose(y_cpu, y1_cpu))
         
         # x_mg = tensor_to_mg(x_cpu)
         # y_mg = tensor_to_mg(y_cpu)
@@ -388,11 +398,10 @@ if __name__ == '__main__':
         torch.cuda.synchronize()
         start = time.perf_counter()
         shape = getOutputShapeMg(equation, x_mg, y_mg)
-        # print(shape)
-        # quit()
         blockSize =   [1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
         deviceCount = [3 - b for b in blockSize]
         ans_mg = TensorMg(shape, blockSize, deviceCount)
+        assert fromTensor(ans_mg, torch.randn(shape, dtype=torch.complex64))
         assert einsumMgV2(equation, x_mg, y_mg, ans_mg)
 
         # ans_mg = my_einsum_mg(equation, x_mg, y_mg, x_cpu)

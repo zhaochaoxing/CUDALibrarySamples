@@ -159,13 +159,11 @@ public:
     }
     void initDataUseTensor() {
         for (auto& device : this->block_devices_) {
-            at::Tensor tmp = at::empty(elements_,
+            at::Tensor tmp = at::zeros(elements_,
                                        at::TensorOptions(at::device({at::kCUDA, device})
                                                         .dtype(at::ScalarType::ComplexFloat)));
-           
             this->tensors_.push_back(tmp);
             this->data_.push_back(tmp.data_ptr());
-          
         }
         this->needFreeMemory_ = false;
     }
@@ -229,15 +227,22 @@ public:
     //     this->needFreeMemory_ = true;
     // }
 
-    TensorMg (const std::vector<int64_t> &shape, void* ptr) {
-        this->shape_ = shape;
-        this->numModes_ = shape.size();
+    TensorMg (const torch::Tensor& tensor) {
+        this->shape_ = tensor.sizes().vec();
+        this->numModes_ = this->shape_.size();
         extent_.resize(this->numModes_, 0);
         for (uint32_t i = 0; i < this->numModes_; i++) {
-            extent_[i] = shape[this->numModes_ - i - 1];
+            extent_[i] = shape_[this->numModes_ - i - 1];
         }
-        this->block_devices_.push_back(CUTENSOR_MG_DEVICE_HOST);
-        this->data_.push_back(ptr);
+        auto device = tensor.device();
+        if (device.is_cpu()) {
+            this->block_devices_.push_back(CUTENSOR_MG_DEVICE_HOST);
+        } else if (device.is_cuda()) {
+            this->block_devices_.push_back(device.index());
+        } else {
+            throw std::runtime_error("cutensorMg: only support cpu and cuda."); 
+        }
+        this->data_.push_back(tensor.data_ptr());
         this->needFreeMemory_ = false;
     }
 
@@ -313,8 +318,8 @@ public:
     }
 
     template<typename ComputeType>
-    static bool fromTensor(TensorMg& dst, const std::vector<int64_t> &shape, void* ptrSrc) {
-        TensorMg src(shape, ptrSrc);
+    static bool fromTensor(TensorMg& dst, const torch::Tensor& srcTensor) {
+        TensorMg src(srcTensor);
         const cudaDataType_t cudaType = CuTensorTypeTraits<ComputeType>::cudaType;
         const cutensorMgHandle_t& handle = GetHandle();
         cutensorMgTensorDescriptor_t descSrc;
@@ -336,7 +341,7 @@ public:
     }
 
     template<typename ComputeType>
-    static bool toTensor(const std::vector<int64_t> &shape, void* ptrDst, TensorMg& src) {
+    static bool toTensor(const torch::Tensor& dstTensor, TensorMg& src) {
         // __asm__("int3");
         cutensorMgTensorDescriptor_t descSrc;
         const cudaDataType_t cudaType = CuTensorTypeTraits<ComputeType>::cudaType;
@@ -347,7 +352,7 @@ public:
             src.getDeviceCount().data(), src.getBlockDevices().size(), src.getBlockDevices().data(), cudaType));
             // src.getDeviceCount().data(), devices.size() / src.getRemainingDevices(), devices.data(), cudaType));
 
-        TensorMg dst(shape, ptrDst);
+        TensorMg dst(dstTensor);
         cutensorMgTensorDescriptor_t descDst;
         CHECK_MG(cutensorMgCreateTensorDescriptor(handle, &descDst, dst.getNumModes(),
             dst.getExtent().data(), NULL, NULL, NULL,

@@ -166,17 +166,17 @@ bool init(const int32_t numDevices) {
   return true;
 }
 
-bool fromTensor(TensorMg& dst, torch::Tensor src) {
+bool fromTensor(TensorMg& dst, torch::Tensor& src) {
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, src.scalar_type(), "fromTensor", [&] {
-    bool ret = TensorMg::fromTensor<scalar_t>(dst, src.sizes().vec(), src.data_ptr<scalar_t>());
+    bool ret = TensorMg::fromTensor<scalar_t>(dst, src);
     if (! ret) throw std::runtime_error("cutensor: failed.");
   });
   return true;
 }
 
-bool toTensor(torch::Tensor dst, TensorMg& src) {
+bool toTensor(torch::Tensor& dst, TensorMg& src) {
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, dst.scalar_type(), "toTensor", [&] {
-    bool ret = TensorMg::toTensor<scalar_t>(dst.sizes().vec(), dst.data_ptr<scalar_t>(), src);
+    bool ret = TensorMg::toTensor<scalar_t>(dst, src);
     if (! ret) throw std::runtime_error("cutensor: Launch failed.");
   });
   return true;
