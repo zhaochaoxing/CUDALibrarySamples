@@ -352,24 +352,11 @@ struct Einsum
 
             typename CuTensorTypeTraits<ComputeType>::ScalarType alpha = 1;
             typename CuTensorTypeTraits<ComputeType>::ScalarType beta = 0;
-
-            float minElapsed = 0;
-            
-            cudaDeviceSynchronize();
-            
-            const auto start = std::chrono::steady_clock::now();
+          
             HANDLE_ERROR(cutensorContraction(handle, &plan,
                         (void*) &alpha, A_raw, B_raw,
                         (void*) &beta,  C_raw, C_raw,
                         work_raw, kWorksize_, stream));
-            cudaDeviceSynchronize();
-            const auto end = std::chrono::steady_clock::now();
-            std::chrono::duration<double, std::milli> dur = end - start;
-            if (minElapsed == 0 || minElapsed > dur.count()) {
-                minElapsed = dur.count();
-            }
-            
-            printf("single-gpu execution minElapsed: %.2e millisec.\n", minElapsed);
         }
         else
         {
